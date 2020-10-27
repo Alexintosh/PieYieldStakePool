@@ -5,11 +5,18 @@ import "@openzeppelin/contracts/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "../interfaces/IAaveLendingPool.sol";
 import "../interfaces/IAtoken.sol";
+import "../interfaces/IPSmartPool.sol";
 
 contract PieYieldStakePool {
     using SafeMath for uint256;
 
     event Deposit(address user, uint256 amount);
+
+    struct LentInfo {
+        uint256 lentAmount;
+        LendingOptions selected;
+        address yieldToken;
+    }
 
     struct UserData {
         uint256 amount;
@@ -31,7 +38,7 @@ contract PieYieldStakePool {
     mapping(address => uint256) public pieBalanceOf;
     
     address public controller;
-    IERC20 public pie;
+    IPSmartPool public pie;
     uint256 public cap;
     uint256 public internalBalance;
 
@@ -40,7 +47,7 @@ contract PieYieldStakePool {
         address _pie
     ) public {
         controller = _controller;
-        pie = IERC20(_pie);
+        pie = IPSmartPool(_pie);
     }
 
     function setLendingMap(address _token, address _yieldToken, LendingOptions option, address _lendingPool ) external {
@@ -55,25 +62,24 @@ contract PieYieldStakePool {
     function deposit(uint256 _amount) public payable {
         require(internalBalance <= cap, "MAX_CAP");
 
-        IPSmartPool Pie = IPSmartPool(_pie);
-
-        (address[] memory tokens, uint256[] memory amounts) = IPSmartPool(_pie).calcTokensForAmount(_poolAmount);
-        Pie.transferFrom(msg.sender, address(this), _poolAmount);
-        Pie.exitPool(_poolAmount);
+        (address[] memory tokens, uint256[] memory amounts) = pie.calcTokensForAmount(_amount);
+        pie.transferFrom(msg.sender, address(this), _amount);
+        pie.exitPool(_amount);
 
         for(uint256 i = 0; i < tokens.length; i++) {
-            if(lendingMap[tokens[i]] === LendingOptions.AAVE) {
+            if(lendingMap[tokens[i]].selected == LendingOptions.AAVE) {
                 IAaveLendingPool lendingPool = IAaveLendingPool( lendingMap[tokens[i]].lendingPool );
+                IERC20 token = IERC20(tokens[i]);
                 token.approve(address(lendingPool), amounts[i]);
                 
                 // TODO ref id
                 lendingPool.deposit(address(token), amounts[i], 0);
 
-                IAtoken aTokenInstance = IAtoken( lendingMap[tokens[i]].yieldToken )
+                IAToken aTokenInstance = IAToken( lendingMap[tokens[i]].yieldToken );
                 aTokenInstance.redirectInterestStream(msg.sender);
             }
 
-            if(lendingMap[tokens[i]] === LendingOptions.COMPOUND) {
+            if(lendingMap[tokens[i]].selected == LendingOptions.COMPOUND) {
                 
             }
         }
