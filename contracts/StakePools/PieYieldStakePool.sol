@@ -12,16 +12,11 @@ contract PieYieldStakePool {
 
     event Deposit(address user, uint256 amount);
 
-    struct LentInfo {
-        uint256 lentAmount;
-        LendingOptions selected;
-        address yieldToken;
-    }
-
     struct UserData {
         uint256 amount;
         address[] underlyingTokens;
         uint256[] underlyingAmounts;
+        uint256[] yAmounts;
     }
 
     enum LendingOptions {AAVE, COMPOUND}
@@ -66,6 +61,8 @@ contract PieYieldStakePool {
         pie.transferFrom(msg.sender, address(this), _amount);
         pie.exitPool(_amount);
 
+        uint256[] memory _yAmounts;
+
         for(uint256 i = 0; i < tokens.length; i++) {
             if(lendingMap[tokens[i]].selected == LendingOptions.AAVE) {
                 IAaveLendingPool lendingPool = IAaveLendingPool( lendingMap[tokens[i]].lendingPool );
@@ -77,6 +74,8 @@ contract PieYieldStakePool {
 
                 IAToken aTokenInstance = IAToken( lendingMap[tokens[i]].yieldToken );
                 aTokenInstance.redirectInterestStream(msg.sender);
+
+                _yAmounts[i] = amounts[i];
             }
 
             if(lendingMap[tokens[i]].selected == LendingOptions.COMPOUND) {
@@ -87,7 +86,8 @@ contract PieYieldStakePool {
         dataOf[msg.sender] = UserData({
             amount: _amount,
             underlyingTokens: tokens,
-            underlyingAmounts: amounts
+            underlyingAmounts: amounts,
+            yAmounts: _yAmounts
         });
         
         emit Deposit(msg.sender, msg.value);
